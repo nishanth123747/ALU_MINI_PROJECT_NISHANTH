@@ -1,0 +1,337 @@
+`define MUL
+module alu #(
+    parameter WIDTH = 4,
+    parameter CMD_WIDTH =4
+)
+(OPA,OPB,CIN,CLK,RST,CMD,CE,MODE,INP_VALID,COUT,OFLOW,RES,G,E,L,ERR);
+    input [WIDTH - 1:0] OPA,OPB;
+    input CLK,RST,CE,MODE,CIN;
+    input [CMD_WIDTH-1:0] CMD;
+    input [1:0]INP_VALID;
+   // output reg [WIDTH:0] RES;
+    output reg COUT;
+    output reg OFLOW;
+    output reg G;
+    output reg E;
+    output reg L;
+    output reg ERR;
+    `ifdef MUL
+        output reg[2*WIDTH:0] RES;
+     `else
+        output reg[WIDTH:0] RES;
+     `endif
+
+    localparam[CMD_WIDTH-1:0] ADD    = 4'b0000,
+              SUB    = 4'b0001,
+              ADD_IN = 4'b0010,
+              SUB_IN = 4'b0011,
+              INC_A  = 4'b0100,
+              DEC_A  = 4'b0101,
+              INC_B  = 4'b0110,
+              DEC_B  = 4'b0111,
+              CMP    = 4'b1000,
+              MUL_IN = 4'b1001,
+              MUL_S  = 4'b1010,
+              ADD_S  = 4'b1011,
+              SUB_S  = 4'b1100;
+
+ localparam  [CMD_WIDTH-1:0]AND    = 4'b0000,
+             NAND   = 4'b0001,
+            OR     = 4'b0010,
+             NOR    = 4'b0011,
+            XOR    = 4'b0100,
+             XNOR   = 4'b0101,
+             NOT_A  = 4'b0110,
+             NOT_B  = 4'b0111,
+            SHR1_A  = 4'b1000,
+             SHL1_A  = 4'b1001,
+             SHR1_B  = 4'b1010,
+             SHL1_B  = 4'b1011,
+              ROL    = 4'b1100,
+              ROR    = 4'b1101;
+
+    reg [WIDTH:0] temp1,temp2;
+    reg [WIDTH-1:0] opa_temp, opb_temp;
+    reg cin_temp, mode_temp, ce_temp;
+    reg [CMD_WIDTH-1:0] cmd_temp,cmd_temp_previous;
+    reg [1:0] inp_valid_temp;
+    reg signed [WIDTH-1:0]signed_A_temp, signed_B_temp;
+    reg [WIDTH:0] res_temp,  res_temp1;
+    reg [2*WIDTH:0] res_temp2,res_temp3;
+    reg err_temp, oflow_temp, cout_temp, g_temp, l_temp, e_temp;
+    reg err_temp1, oflow_temp1, cout_temp1, g_temp1, l_temp1, e_temp1;
+    localparam shift_width = $clog2(WIDTH);
+    wire [shift_width-1:0] shift_amt = opb_temp[shift_width-1:0];
+    wire invalid = |opb_temp[WIDTH-1:shift_width];
+    reg [2*WIDTH:0]res1_temp;
+always @(posedge CLK or posedge RST) begin
+    if (RST) begin
+        `ifdef MUL
+            RES = {2*WIDTH+1{1'b0}};
+        `else
+            RES = {WIDTH+1{1'b0}};
+         `endif
+
+        ERR <= 0;
+        OFLOW <= 0;
+        COUT <= 0;
+        G <= 0;
+        L <= 0;
+        E <= 0;
+       // mul_temp <= 0;
+        cmd_temp_previous <= 0;
+        //res1_temp <={2*WIDTH{1'b0}};
+    end else begin
+        // clk 1
+        opa_temp <= OPA;
+        opb_temp <= OPB;
+       cin_temp <= CIN;
+        mode_temp <= MODE;
+      ce_temp <= CE;
+        cmd_temp_previous <= cmd_temp;
+        cmd_temp <= CMD;
+       inp_valid_temp <= INP_VALID;
+        signed_A_temp <= OPA;
+       signed_B_temp <= OPB;
+
+        // clk 2
+        if (cmd_temp == MUL_IN || cmd_temp == MUL_S) begin
+            res_temp2 <= res_temp3;
+
+        end else begin
+            // Non-MUL operations
+            RES <= res_temp;
+            ERR <= err_temp;
+            OFLOW <= oflow_temp;
+            COUT <= cout_temp;
+            G <= g_temp;
+            L <= l_temp;
+            E <= e_temp;
+        end
+ end
+        // clk 3 for mul
+        if (cmd_temp_previous == MUL_IN || cmd_temp_previous == MUL_S) begin
+            RES <= res_temp2;
+        end
+    end
+
+    always@(*) begin
+        `ifdef MUL
+            res_temp = {2*WIDTH+1{1'b0}};
+        `else
+            res_temp = {WIDTH+1{1'b0}};
+         `endif
+        err_temp = 1'b0;
+        oflow_temp = 1'b0;
+        cout_temp = 1'b0;
+        g_temp = 1'b0;
+        l_temp = 1'b0;
+        e_temp = 1'b0;
+
+        if (ce_temp) begin
+            if (mode_temp) begin
+                case (inp_valid_temp)
+                    2'b00: begin
+                        `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                    end
+                    2'b01: begin
+                        case(cmd_temp)
+                            INC_A:begin
+                                res_temp = opa_temp + 1;
+                                cout_temp = res_temp[WIDTH];
+                                end
+                            DEC_A:begin
+                                 res_temp = opa_temp - 1;
+                                 oflow_temp = res_temp[WIDTH];
+                                 end
+                            default: begin
+                                 `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                            end
+                        endcase
+                    end
+                    2'b10: begin
+                        case(cmd_temp)
+                            INC_B:begin
+                            res_temp = opb_temp + 1;
+                            cout_temp = res_temp[WIDTH];
+                            end
+                            DEC_B:begin
+                            res_temp = opb_temp - 1;
+                            oflow_temp = res_temp[WIDTH];
+                            end
+                            default: begin
+                                `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                            end
+                        endcase
+                    end
+                    2'b11: begin
+                        case (cmd_temp)
+                            ADD:begin
+                               res_temp = opa_temp + opb_temp;
+                               cout_temp = res_temp[WIDTH];
+                               end
+                            SUB:begin
+                               res_temp = opa_temp - opb_temp;
+                               oflow_temp = (opa_temp < opb_temp)?1:0;
+                               end
+                            ADD_IN:begin
+                                   res_temp = opa_temp + opb_temp + cin_temp;
+                                   cout_temp = res_temp[WIDTH];
+                                   end
+                            SUB_IN: begin
+                                  res_temp = opa_temp - opb_temp - cin_temp;
+                                  oflow_temp = (opa_temp < opb_temp)?1:0;
+                                   end
+                            CMP: begin
+                                if (opa_temp == opb_temp) begin
+                                    e_temp = 1'b1;
+                                    g_temp = 1'b0;
+                                    l_temp = 1'b0;
+                                end
+                                else if (opa_temp > opb_temp) begin
+                                    g_temp = 1'b1;
+                                    e_temp = 1'b0;
+                                    l_temp = 1'b0;
+                                end
+                                else begin
+                                    l_temp = 1'b1;
+                                    e_temp = 1'b0;
+                                    g_temp = 1'b0;
+                                end
+                            end
+                            MUL_IN:begin
+                                   `ifdef MUL
+                                   temp1 = opa_temp + 1;
+                                   temp2 = opb_temp + 1;
+                                   $display("%d %d ",temp1,temp2);
+                                   res_temp3 = temp1 * temp2;
+                                   `endif
+                                   end
+
+                            MUL_S:begin
+                                  `ifdef MUL
+                                 temp1 = opa_temp << 1;
+                                 res_temp3 = temp1 * opb_temp;
+                                 `endif
+                                 end
+                            ADD_S: begin
+                                res_temp = signed_A_temp + signed_B_temp;
+                                 oflow_temp = (signed_A_temp[WIDTH-1] == signed_B_temp[WIDTH-1]) &&
+                                            (res_temp[WIDTH-1] != signed_A_temp[WIDTH-1]);
+                                g_temp = signed_A_temp > signed_B_temp ? 1 : 0;
+                                e_temp = signed_A_temp == signed_B_temp ? 1: 0;
+                                l_temp = signed_A_temp < signed_B_temp ? 1:0;
+
+                            end
+                            SUB_S: begin
+                                res_temp = signed_A_temp - signed_B_temp;
+                                oflow_temp = (signed_A_temp[WIDTH-1] != signed_B_temp[WIDTH-1]) &&
+                                            (res_temp[WIDTH-1] != signed_A_temp[WIDTH-1]);
+                                g_temp = signed_A_temp > signed_B_temp ? 1 : 0;
+                                e_temp = signed_A_temp == signed_B_temp ? 1: 0;
+                                l_temp = signed_A_temp < signed_B_temp ? 1:0;
+                            end
+                            default: begin
+                                     `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                            end
+                        endcase
+                    end
+                endcase
+            end
+            else begin // Logical operation
+                case (inp_valid_temp)
+                    2'b00: begin
+                        `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                    end
+                    2'b01: begin
+                        case(cmd_temp)
+                            NOT_A: res_temp = {1'b0,~opa_temp};
+                            SHR1_A: res_temp = {1'b0,opa_temp >> 1};
+                            SHL1_A: res_temp = {1'b0,opa_temp << 1};
+                            default: begin
+                                     `ifdef MUL
+                         RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+
+                            end
+                        endcase
+                    end
+                    2'b10: begin
+                        case(cmd_temp)
+                            NOT_B: res_temp = {1'b0,~opb_temp};
+                            SHR1_B: res_temp = {1'b0, opb_temp >> 1};
+                            SHL1_B: res_temp = {1'b0,opb_temp << 1};
+                            default: begin
+                                  `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                            end
+                        endcase
+                    end
+                    2'b11: begin // both A and B valid
+                        case (cmd_temp)
+                            AND: res_temp = {1'b0,opa_temp & opb_temp};
+                            NAND: res_temp = {1'b0,~(opa_temp & opb_temp)};
+                            OR: res_temp = {1'b0,opa_temp | opb_temp};
+                            NOR: res_temp = {1'b0,~(opa_temp | opb_temp)};
+                            XOR: res_temp = {1'b0,opa_temp ^ opb_temp};
+                            XNOR: res_temp = {1'b0,~(opa_temp ^ opb_temp)};
+                            ROL: begin
+                                if (invalid)
+                                    err_temp = 1;
+                                else
+                                    res_temp = {1'b0,((opa_temp << shift_amt) | (opa_temp >> (WIDTH - shift_amt)))};
+                            end
+                            ROR: begin
+                                if (invalid)
+                                    err_temp = 1;
+                                else
+                                    res_temp = {1'b0,((opa_temp >> shift_amt) | (opa_temp << (WIDTH- shift_amt)))};
+                            end
+                            default: begin
+                                     `ifdef MUL
+                          RES <= {2*WIDTH+1{1'b0}};
+                           `else
+                          RES <= {WIDTH+1{1'b0}};
+                           `endif
+                            end
+                        endcase
+//                   default:begin
+//                                 `ifdef MUL
+//                          RES <= {2*input1+1{1'b0}};
+//                           `else
+//                          RES <= {input1+1{1'b0}};
+//                           `endif
+//                             end
+
+                    end
+                endcase
+
+            end
+        end
+    end
+endmodule
